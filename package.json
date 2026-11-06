@@ -1,0 +1,47 @@
+{
+  "name": "kobomarket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "test": "jest --runInBand"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.21.0",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^6.5.4",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
+    "joi": "^18.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "knex": "^3.3.0",
+    "mongoose": "^9.11.4",
+    "morgan": "^1.12.1",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "slugify": "^1.6.9",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "cross-env": "^10.1.0",
+    "eslint": "^10.14.0",
+    "jest": "^30.5.2",
+    "nodemon": "^3.1.14",
+    "pino-pretty": "^13.2.0",
+    "prettier": "^3.9.10",
+    "supertest": "^7.3.1"
+  }
+}
