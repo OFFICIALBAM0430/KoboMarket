@@ -1,18 +1,18 @@
-const {Queue} = require('bullmq');
+const { Queue } = require('bullmq');
 const redis = require('../config/redis');
 
 const emailQueue = new Queue('emailQueue', {
-    connection: redis, 
-    
+    connection: redis,
+
     defaultJobOptions: {
-        attempts: 3, 
-        
+        attempts: 3,
+
         backoff: {
-            type: 'exponential', 
+            type: 'exponential',
             delay: 5000,
-        }, 
-        
-        removeOnComplete: 100, 
+        },
+
+        removeOnComplete: 100,
         removeOnFail: 500,
     },
 });

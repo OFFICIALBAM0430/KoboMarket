@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const {Worker} = require('bullmq');
+const { Worker } = require('bullmq');
 const redis = require('../config/redis');
 const sendEmail = require('../utils/sendEmail');
 
@@ -9,7 +9,7 @@ const emailWorker = new Worker('emailQueue',
     async (job) => {
         console.log(`Processing email job: ${job.id}`);
 
-        const {to, subject, text, html, message} = job.data;
+        const { to, subject, text, html, message } = job.data;
 
         const result = await sendEmail({
             to,

@@ -1,6 +1,6 @@
 const emailTransporter = require('../config/email');
 
-const sendEmail = async ({ to, subject, text, html}) => {
+const sendEmail = async ({ to, subject, text, html }) => {
     try {
         if (!to || !subject || (!text && !html)) {
             throw new Error('Recipient, subject and email content are required');

@@ -1,5 +1,4 @@
 require('dotenv').config();
-
 const app = require('./src/app');
 const connectMongoDB = require('./src/config/mongodb');
 const db = require('./src/config/postgres');
@@ -23,8 +22,8 @@ const startServer = async () => {
     } catch (error) {
         console.log('Server startup failed');
 
-        await db.destroy().catch(() => {});
-        await redis.quit().catch(() => {});
+        await db.destroy().catch(() => { });
+        await redis.quit().catch(() => { });
         process.exit(1);
     }
 };
