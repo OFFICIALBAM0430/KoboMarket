@@ -28,7 +28,7 @@ const {
 
 router.post('/register', validate(registerSchema), registerUser);
 router.post('/verify-email', validate(verifyEmailSchema), verifyEmail);
-router.post('/login', loginLimiter, validate(loginSchema), loginUser);
+router.post('/login', validate(loginSchema), loginLimiter, loginUser);
 router.post('/refresh-token', validate(refreshTokenSchema), refreshAccessToken);
 router.post('/logout', validate(refreshTokenSchema), logoutUser);
 router.post('/logout-all', protect, logoutAllDevices);
