@@ -92,7 +92,7 @@ const registerUser = async (req, res) => {
 
         const userData = user.toObject();
         delete userData.password;
-        delete userData.emailVerificationCodeHash;
+        delete userData.emailVerificationCode;
         return res.status(201).json({
             success: true,
             message: verificationEmailQueued
@@ -452,7 +452,7 @@ const logoutUser = async (req, res) => {
             });
         }
         const tokenHash = hashToken(refreshToken);
-        // Revoke the stored refresh token.
+        
         const result = await RefreshToken.updateOne(
             {
                 userId: decoded.userId,
