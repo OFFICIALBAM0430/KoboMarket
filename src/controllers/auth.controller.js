@@ -359,7 +359,7 @@ const refreshAccessToken = async (req, res) => {
         }
 
         const accessToken = jwt.sign({
-            userid: user._id,
+            userId: user._id,
             roles: user.roles,
             tokenVersion: user.tokenVersion,
             tokenType: 'access'
@@ -409,7 +409,7 @@ const refreshAccessToken = async (req, res) => {
         if (rotationResult.modifiedCount !== 1) {
             await RefreshToken.deleteOne({ _id: replacementRecord._id });
 
-            await RefreshToken.updatemany({ userId: user._id, revokedAt: null },
+            await RefreshToken.updateMany({ userId: user._id, revokedAt: null },
                 { $set: { revokedAt: new Date() } }
             );
 
