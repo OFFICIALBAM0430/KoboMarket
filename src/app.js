@@ -8,6 +8,7 @@ const walletRoutes = require('./routes/wallet.routes');
 const vendorRoutes = require('./routes/vendor.routes');
 const productRoutes = require('./routes/product.routes');
 const adminVendorRoutes = require('./routes/adminVendor.routes');
+const cartRoutes = require('./routes/cart.routes');
 
 const app = express();
 
@@ -26,5 +27,6 @@ app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/vendors', vendorRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/admin/vendors', adminVendorRoutes);
+app.use('/api/v1/cart', cartRoutes);
 
 module.exports = app;
