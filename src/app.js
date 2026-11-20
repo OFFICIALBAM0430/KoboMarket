@@ -9,6 +9,7 @@ const vendorRoutes = require('./routes/vendor.routes');
 const productRoutes = require('./routes/product.routes');
 const adminVendorRoutes = require('./routes/adminVendor.routes');
 const cartRoutes = require('./routes/cart.routes');
+const reviewRoutes = require('./routes/review.routes');
 
 const app = express();
 
@@ -28,5 +29,6 @@ app.use('/api/v1/vendors', vendorRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/admin/vendors', adminVendorRoutes);
 app.use('/api/v1/cart', cartRoutes);
+app.use('/api/v1', reviewRoutes);
 
 module.exports = app;
