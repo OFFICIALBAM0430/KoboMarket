@@ -28,20 +28,37 @@ const requestPayout = async ({
         throw new Error('Minimum withdrawal amount is ₦1,000');
     }
 
-    const reference = `PAY-${crypto.randomUUID()}`;
+    if (
+        typeof idempotencyKey !== 'string' ||
+        idempotencyKey.trim().length < 10 ||
+        idempotencyKey.trim().length > 143
+    ) {
+        throw new Error('Invalid idempotency key');
+    }
 
-    const vendorAccount = await getUserAccount(String(vendorId));
+    const normalizedKey = idempotencyKey.trim();
+    const normalizedVendorId = String(vendorId);
+
+    // Generate the same reference for every retry.
+    const reference = `PAY-${crypto
+        .createHash('sha256')
+        .update(`${normalizedVendorId}:${normalizedKey}`)
+        .digest('hex')
+        .slice(0, 32)}`;
+
+    const vendorAccount = await getUserAccount(normalizedVendorId);
+
     const clearingAccount = await getSystemAccount(
         'PLATFORM_PAYOUT_CLEARING'
     );
 
     const transaction = await postLedgerTransaction({
-        idempotencyKey: `payout:${idempotencyKey}`,
+        idempotencyKey: `payout:${normalizedKey}`,
         reference,
         type: 'PAYOUT_REQUEST',
         metadata: {
             ...metadata,
-            vendorId: String(vendorId),
+            vendorId: normalizedVendorId,
             amountKobo
         },
         entries: [
@@ -58,14 +75,16 @@ const requestPayout = async ({
         ]
     });
 
-    const transactionId = String(transaction.transaction.id);
+    if (!transaction.transaction) {
+        throw new Error('Payout ledger transaction was not returned');
+    }
 
     const payout = await createPayoutRecord({
-        userId: String(vendorId),
-        transactionId,
+        userId: normalizedVendorId,
+        transactionId: String(transaction.transaction.id),
         amountKobo,
         reference,
-        idempotencyKey
+        idempotencyKey: normalizedKey
     });
 
     return {
