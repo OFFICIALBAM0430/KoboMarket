@@ -1,3 +1,4 @@
+
 exports.up = async function (knex) {
     await knex.raw(`
         CREATE OR REPLACE FUNCTION prevent_posted_ledger_entry_changes()
@@ -5,25 +6,40 @@ exports.up = async function (knex) {
         DECLARE
             transaction_status VARCHAR(30);
         BEGIN
-            SELECT status
-            INTO transaction_status
-            FROM transactions
-            WHERE id = OLD.transaction_id;
-
-            IF transaction_status = 'posted' THEN
+            IF TG_OP = 'UPDATE' AND
+               NEW.transaction_id <> OLD.transaction_id THEN
                 RAISE EXCEPTION
-                    'Posted ledger entries cannot be modified or deleted'
+                    'Ledger entries cannot be moved between transactions'
                     USING ERRCODE = '55000';
             END IF;
 
-            RETURN OLD;
+            SELECT status
+            INTO transaction_status
+            FROM transactions
+            WHERE id = CASE
+                WHEN TG_OP = 'DELETE' THEN OLD.transaction_id
+                ELSE NEW.transaction_id
+            END
+            FOR UPDATE;
+
+            IF transaction_status = 'posted' THEN
+                RAISE EXCEPTION
+                    'Posted ledger entries cannot be inserted, modified or deleted'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            IF TG_OP = 'DELETE' THEN
+                RETURN OLD;
+            END IF;
+
+            RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
     `);
 
     await knex.raw(`
         CREATE TRIGGER protect_posted_ledger_entries
-        BEFORE UPDATE OR DELETE ON ledger_entries
+        BEFORE INSERT OR UPDATE OR DELETE ON ledger_entries
         FOR EACH ROW
         EXECUTE FUNCTION prevent_posted_ledger_entry_changes();
     `);
