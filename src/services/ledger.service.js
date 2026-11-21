@@ -8,6 +8,7 @@ const createError = (message, statusCode = 400) => {
     error.statusCode = statusCode;
     return error;
 };
+
 const toKobo = (value) => {
     if (
         typeof value === 'number' &&
@@ -36,6 +37,23 @@ const toKobo = (value) => {
     return amount;
 };
 
+const normalizeId = (value) => {
+    if (
+        typeof value === 'number' &&
+        !Number.isSafeInteger(value)
+    ) {
+        throw createError('Account ID must not exceed safe integer precision');
+    }
+
+    const id = String(value);
+
+    if (!/^[1-9]\d*$/.test(id) || BigInt(id) > MAX_BIGINT) {
+        throw createError('Invalid account ID');
+    }
+
+    return id;
+};
+
 const getTransactionDetails = async (trx, transactionId) => {
     const transaction = await trx('transactions')
         .where({ id: transactionId })
@@ -48,20 +66,71 @@ const getTransactionDetails = async (trx, transactionId) => {
     return { transaction, entries };
 };
 
+const createFingerprint = (items) => {
+    return JSON.stringify(
+        items.map((item) => ({
+            accountId: String(item.accountId),
+            direction: item.direction,
+            amountKobo: String(item.amountKobo)
+        })).sort((a, b) => {
+            const accountDifference =
+                BigInt(a.accountId) - BigInt(b.accountId);
+
+            if (accountDifference !== 0n) {
+                return accountDifference < 0n ? -1 : 1;
+            }
+
+            return (
+                a.direction.localeCompare(b.direction) ||
+                (
+                    BigInt(a.amountKobo) < BigInt(b.amountKobo)
+                        ? -1
+                        : BigInt(a.amountKobo) > BigInt(b.amountKobo)
+                            ? 1
+                            : 0
+                )
+            );
+        })
+    );
+};
+
 const postLedgerTransaction = async ({
     idempotencyKey,
     type,
-    reference = null,
-    description = null,
+    reference,
     metadata = {},
     entries
 }) => {
-    if (!idempotencyKey || typeof idempotencyKey !== 'string') {
-        throw createError('An idempotency key is required');
+    if (
+        typeof idempotencyKey !== 'string' ||
+        !idempotencyKey.trim() ||
+        idempotencyKey.length > 150
+    ) {
+        throw createError('A valid idempotency key is required');
     }
 
-    if (!type || typeof type !== 'string') {
-        throw createError('Transaction type is required');
+    if (
+        typeof type !== 'string' ||
+        !type.trim() ||
+        type.length > 50
+    ) {
+        throw createError('A valid transaction type is required');
+    }
+
+    if (
+        typeof reference !== 'string' ||
+        !reference.trim() ||
+        reference.length > 100
+    ) {
+        throw createError('A valid transaction reference is required');
+    }
+
+    if (
+        !metadata ||
+        typeof metadata !== 'object' ||
+        Array.isArray(metadata)
+    ) {
+        throw createError('Metadata must be an object');
     }
 
     if (!Array.isArray(entries) || entries.length < 2) {
@@ -73,15 +142,8 @@ const postLedgerTransaction = async ({
             throw createError('Entry direction must be debit or credit');
         }
 
-        if (
-            !Number.isSafeInteger(Number(entry.accountId)) ||
-            Number(entry.accountId) <= 0
-        ) {
-            throw createError('Invalid account ID');
-        }
-
         return {
-            accountId: Number(entry.accountId),
+            accountId: normalizeId(entry.accountId),
             direction: entry.direction,
             amount: toKobo(entry.amountKobo)
         };
@@ -95,36 +157,29 @@ const postLedgerTransaction = async ({
         .filter((entry) => entry.direction === 'credit')
         .reduce((total, entry) => total + entry.amount, 0n);
 
-    if (totalDebits === 0n || totalCredits === 0n) {
-        throw createError('A transaction must contain debits and credits');
-    }
-
     if (totalDebits !== totalCredits) {
         throw createError('Ledger transaction is not balanced');
     }
 
-    const fingerprint = (items) => JSON.stringify(
-        items.map((item) => ({
-            accountId: item.accountId,
-            direction: item.direction,
-            amountKobo: item.amount.toString()
-        })).sort((a, b) =>
-            a.accountId - b.accountId ||
-            a.direction.localeCompare(b.direction) ||
-            a.amountKobo.localeCompare(b.amountKobo)
-        )
+    if (totalDebits === 0n) {
+        throw createError('Transaction amount must be greater than zero');
+    }
+
+    const requestedFingerprint = createFingerprint(
+        normalizedEntries.map((entry) => ({
+            accountId: entry.accountId,
+            direction: entry.direction,
+            amountKobo: entry.amount.toString()
+        }))
     );
 
-    const requestedFingerprint = fingerprint(normalizedEntries);
-
     return db.transaction(async (trx) => {
-    
         const inserted = await trx('transactions')
             .insert({
-                reference,
-                type,
+                reference: reference.trim(),
+                type: type.trim(),
                 status: 'pending',
-                idempotency_key: idempotencyKey,
+                idempotency_key: idempotencyKey.trim(),
                 metadata
             })
             .onConflict('idempotency_key')
@@ -133,14 +188,27 @@ const postLedgerTransaction = async ({
 
         if (inserted.length === 0) {
             const existing = await trx('transactions')
-                .where({ idempotency_key: idempotencyKey })
+                .where({ idempotency_key: idempotencyKey.trim() })
                 .first();
 
             if (!existing) {
-                throw createError('Unable to retrieve existing transaction', 500);
+                throw createError(
+                    'Unable to retrieve existing transaction',
+                    500
+                );
             }
 
-            if (existing.type !== type) {
+            if (existing.status !== 'posted') {
+                throw createError(
+                    'Existing transaction is not posted',
+                    409
+                );
+            }
+
+            if (
+                existing.type !== type.trim() ||
+                existing.reference !== reference.trim()
+            ) {
                 throw createError(
                     'Idempotency key was already used for another transaction',
                     409
@@ -150,9 +218,9 @@ const postLedgerTransaction = async ({
             const existingEntries = await trx('ledger_entries')
                 .where({ transaction_id: existing.id });
 
-            const existingFingerprint = fingerprint(
+            const existingFingerprint = createFingerprint(
                 existingEntries.map((entry) => ({
-                    accountId: Number(entry.account_id),
+                    accountId: entry.account_id,
                     direction: entry.direction,
                     amountKobo: entry.amount_kobo
                 }))
@@ -171,8 +239,10 @@ const postLedgerTransaction = async ({
             };
         }
 
-        const transactionId = inserted[0].id;
-      
+        const transactionId = String(
+            inserted[0].id ?? inserted[0]
+        );
+
         const balanceChanges = new Map();
 
         for (const entry of normalizedEntries) {
@@ -188,7 +258,12 @@ const postLedgerTransaction = async ({
             );
         }
 
-        const accountIds = [...balanceChanges.keys()].sort((a, b) => a - b);
+        const accountIds = [...balanceChanges.keys()].sort(
+            (a, b) => {
+                const difference = BigInt(a) - BigInt(b);
+                return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+            }
+        );
 
         const accounts = await trx('accounts')
             .whereIn('id', accountIds)
@@ -196,17 +271,20 @@ const postLedgerTransaction = async ({
             .forUpdate();
 
         if (accounts.length !== accountIds.length) {
-            throw createError('One or more financial accounts were not found', 404);
+            throw createError(
+                'One or more financial accounts were not found',
+                404
+            );
         }
 
-        const accountMap = new Map(
-            accounts.map((account) => [Number(account.id), account])
+        const currencies = new Set(
+            accounts.map((account) => account.currency)
         );
 
-        const currencies = new Set(accounts.map((account) => account.currency));
-
         if (currencies.size !== 1) {
-            throw createError('All ledger accounts must use the same currency');
+            throw createError(
+                'All ledger accounts must use the same currency'
+            );
         }
 
         for (const account of accounts) {
@@ -217,21 +295,19 @@ const postLedgerTransaction = async ({
                 );
             }
 
-            const change = balanceChanges.get(Number(account.id));
+            const accountId = String(account.id);
+            const change = balanceChanges.get(accountId);
             const currentBalance = BigInt(account.balance_kobo);
             const newBalance = currentBalance + change;
 
-            if (account.owner_type !== 'system' && newBalance < 0n) {
+            if (newBalance < 0n) {
                 throw createError(
-                    `Insufficient funds in account ${account.id}`,
+                    `Insufficient funds in account ${accountId}`,
                     409
                 );
             }
 
-            if (
-                newBalance > MAX_BIGINT ||
-                newBalance < -MAX_BIGINT - 1n
-            ) {
+            if (newBalance > MAX_BIGINT) {
                 throw createError(
                     'Account balance exceeds the supported range',
                     400
@@ -276,8 +352,10 @@ const postLedgerTransaction = async ({
 };
 
 const getAccountBalance = async (accountId) => {
+    const normalizedId = normalizeId(accountId);
+
     const account = await db('accounts')
-        .where({ id: accountId })
+        .where({ id: normalizedId })
         .first();
 
     if (!account) {
@@ -285,7 +363,7 @@ const getAccountBalance = async (accountId) => {
     }
 
     return {
-        accountId: account.id,
+        accountId: String(account.id),
         currency: account.currency,
         balanceKobo: account.balance_kobo,
         status: account.status
