@@ -1,15 +1,19 @@
 
+const crypto = require('crypto');
+
 const { getUserAccount } = require('./userAccount.service');
 const { getSystemAccount } = require('./systemAccount.service');
 const { postLedgerTransaction } = require('./ledger.service');
+const {
+    createPayoutRecord
+} = require('./payoutRecord.service');
 
-const MINIMUM_PAYOUT_KOBO = 100000; // ₦1,000
+const MINIMUM_PAYOUT_KOBO = 100000;
 
 const requestPayout = async ({
     vendorId,
     amountKobo,
     idempotencyKey,
-    reference,
     metadata = {}
 }) => {
     if (!vendorId) {
@@ -24,21 +28,21 @@ const requestPayout = async ({
         throw new Error('Minimum withdrawal amount is ₦1,000');
     }
 
-    const vendorAccount = await getUserAccount(vendorId);
+    const reference = `PAY-${crypto.randomUUID()}`;
 
+    const vendorAccount = await getUserAccount(String(vendorId));
     const clearingAccount = await getSystemAccount(
         'PLATFORM_PAYOUT_CLEARING'
     );
 
     const transaction = await postLedgerTransaction({
-        idempotencyKey,
+        idempotencyKey: `payout:${idempotencyKey}`,
         reference,
         type: 'PAYOUT_REQUEST',
         metadata: {
             ...metadata,
-            vendorId,
-            amountKobo,
-            payoutStatus: 'pending'
+            vendorId: String(vendorId),
+            amountKobo
         },
         entries: [
             {
@@ -54,9 +58,20 @@ const requestPayout = async ({
         ]
     });
 
+    const transactionId = String(transaction.transaction.id);
+
+    const payout = await createPayoutRecord({
+        userId: String(vendorId),
+        transactionId,
+        amountKobo,
+        reference,
+        idempotencyKey
+    });
+
     return {
         success: true,
         message: 'Withdrawal request created successfully',
+        payout,
         transaction
     };
 };
