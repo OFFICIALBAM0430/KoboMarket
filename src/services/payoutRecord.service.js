@@ -103,6 +103,27 @@ const getPayoutByReference = async (reference) => {
     return payout;
 };
 
+
+const saveRecipientCode = async (payoutId, recipientCode) => {
+    if (!payoutId || !recipientCode) {
+        throw createError('Payout ID and recipient code are required');
+    }
+
+    const [updated] = await db('payout_requests')
+        .where({ id: payoutId })
+        .update({
+            recipient_code: recipientCode,
+            updated_at: db.fn.now()
+        })
+        .returning('*');
+
+    if (!updated) {
+        throw createError('Payout request not found', 404);
+    }
+
+    return updated;
+};
+
 const updatePayoutStatus = async ({
     payoutId,
     status,
@@ -165,5 +186,6 @@ const updatePayoutStatus = async ({
 module.exports = {
     createPayoutRecord,
     getPayoutByReference,
-    updatePayoutStatus
+    updatePayoutStatus,
+    saveRecipientCode
 };
