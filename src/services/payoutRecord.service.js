@@ -4,7 +4,7 @@ const db = require('../config/postgres');
 const ALLOWED_TRANSITIONS = {
     pending: ['processing', 'failed'],
     processing: ['paid', 'failed'],
-    paid: [],
+    paid: ['reversed'],
     failed: ['reversed'],
     reversed: []
 };
