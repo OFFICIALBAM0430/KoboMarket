@@ -143,7 +143,7 @@ const updatePayoutStatus = async ({
 
         const allowed = ALLOWED_TRANSITIONS[payout.status] || [];
 
-        if (!allowed.includes(status)) {
+        if (payout.status !== status && !allowed.includes(status)) {
             throw createError(
                 `Cannot change payout from ${payout.status} to ${status}`,
                 409
