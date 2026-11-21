@@ -70,7 +70,7 @@ const handlePaystackPayoutWebhook = async (event) => {
             throw new Error('Webhook details do not match payout');
         }
 
-        // SUCCESSFUL TRANSFER
+    
         if (eventType === 'transfer.success') {
             if (payout.status === 'paid') {
                 await markWebhookProcessed(eventKey);
@@ -101,7 +101,7 @@ const handlePaystackPayoutWebhook = async (event) => {
             });
         }
 
-        // FAILED OR REVERSED TRANSFER
+        
         else {
             if (payout.status === 'reversed') {
                 await markWebhookProcessed(eventKey);
@@ -130,7 +130,7 @@ const handlePaystackPayoutWebhook = async (event) => {
                 );
             }
 
-            // Mark pending or processing payouts as failed.
+            
             if (
                 payout.status !== 'failed' &&
                 payout.status !== 'paid'
@@ -142,7 +142,7 @@ const handlePaystackPayoutWebhook = async (event) => {
                 });
             }
 
-            // Restore a previously settled transfer to clearing.
+            
             if (eventType === 'transfer.reversed') {
                 await restoreReversedPayoutToClearing({
                     amountKobo: Number(payout.amount_kobo),
@@ -151,7 +151,7 @@ const handlePaystackPayoutWebhook = async (event) => {
                 });
             }
 
-            // Refund the vendor's wallet from clearing.
+            
             const reversal = await reverseFailedPayout({
                 vendorId: payout.user_id,
                 amountKobo: Number(payout.amount_kobo),
