@@ -10,11 +10,16 @@ const productRoutes = require('./routes/product.routes');
 const adminVendorRoutes = require('./routes/adminVendor.routes');
 const cartRoutes = require('./routes/cart.routes');
 const reviewRoutes = require('./routes/review.routes');
+const paystackWebhookRoutes = require('./routes/paystackWebhook.routes');
 
 const app = express();
 
 app.use(helmet());
 app.use(cors());
+app.use(
+    '/api/v1/webhooks/paystack',
+    paystackWebhookRoutes
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
