@@ -1,4 +1,3 @@
-
 const {
     getPayoutByReference,
     updatePayoutStatus
@@ -13,6 +12,12 @@ const {
     markWebhookProcessed,
     markWebhookFailed
 } = require('./payoutWebhookEvent.service');
+
+const {
+    settleSuccessfulPayout,
+    restoreReversedPayoutToClearing
+} = require('./payoutSettlement.service');
+
 
 const handlePaystackPayoutWebhook = async (event) => {
     const { event: eventType, data } = event || {};
@@ -64,6 +69,7 @@ const handlePaystackPayoutWebhook = async (event) => {
             throw new Error('Webhook details do not match payout');
         }
 
+
         if (eventType === 'transfer.success') {
             if (payout.status === 'paid') {
                 await markWebhookProcessed(eventKey);
@@ -74,16 +80,27 @@ const handlePaystackPayoutWebhook = async (event) => {
                 };
             }
 
-            if (['failed', 'reversed'].includes(payout.status)) {
+            if (
+                payout.status === 'failed' ||
+                payout.status === 'reversed'
+            ) {
                 throw new Error('Conflicting payout status');
             }
+
+            await settleSuccessfulPayout({
+                amountKobo: Number(payout.amount_kobo),
+                reference: payout.reference,
+                idempotencyKey: payout.reference
+            });
 
             await updatePayoutStatus({
                 payoutId: payout.id,
                 status: 'paid',
                 providerReference: data.transfer_code
             });
-        } else {
+        }
+            
+        else {
             if (payout.status === 'reversed') {
                 await markWebhookProcessed(eventKey);
 
@@ -107,7 +124,7 @@ const handlePaystackPayoutWebhook = async (event) => {
                 payout.status === 'paid'
             ) {
                 throw new Error(
-                    'A paid transfer cannot be marked failed'
+                    'A paid payout cannot be marked as failed'
                 );
             }
 
@@ -122,6 +139,15 @@ const handlePaystackPayoutWebhook = async (event) => {
                 });
             }
 
+            if (eventType === 'transfer.reversed') {
+                await restoreReversedPayoutToClearing({
+                    amountKobo: Number(payout.amount_kobo),
+                    reference: payout.reference,
+                    idempotencyKey: payout.reference
+                });
+            }
+
+        
             const reversal = await reverseFailedPayout({
                 vendorId: payout.user_id,
                 amountKobo: Number(payout.amount_kobo),
@@ -147,10 +173,14 @@ const handlePaystackPayoutWebhook = async (event) => {
             success: true,
             message: 'Payout webhook processed successfully'
         };
+
     } catch (error) {
         await markWebhookFailed(eventKey, error.message);
         throw error;
     }
 };
 
-module.exports = { handlePaystackPayoutWebhook };
+module.exports = {
+    handlePaystackPayoutWebhook
+};
+                    
