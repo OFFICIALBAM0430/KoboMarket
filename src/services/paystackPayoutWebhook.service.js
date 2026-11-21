@@ -11,31 +11,36 @@ const {
 const handlePaystackPayoutWebhook = async (event) => {
     const { event: eventType, data } = event || {};
 
+    const supportedEvents = [
+        'transfer.success',
+        'transfer.failed',
+        'transfer.reversed'
+    ];
+
     if (
         !data ||
         !data.reference ||
-        !['transfer.success', 'transfer.failed', 'transfer.reversed'].includes(eventType)
+        !supportedEvents.includes(eventType)
     ) {
         throw new Error('Invalid or unsupported payout webhook');
     }
 
     const payout = await getPayoutByReference(data.reference);
 
-    if (String(data.amount) !== String(payout.amount_kobo)) {
-        throw new Error('Webhook amount does not match payout amount');
-    }
-
-    if (data.currency !== 'NGN') {
-        throw new Error('Unexpected payout currency');
+    if (
+        String(data.amount) !== String(payout.amount_kobo) ||
+        data.currency !== 'NGN'
+    ) {
+        throw new Error('Webhook details do not match payout');
     }
 
     if (eventType === 'transfer.success') {
         if (payout.status === 'paid') {
-            return { success: true, message: 'Payout already completed' };
+            return { success: true, message: 'Already completed' };
         }
 
         if (['failed', 'reversed'].includes(payout.status)) {
-            throw new Error('Conflicting payout status received');
+            throw new Error('Conflicting payout status');
         }
 
         const updated = await updatePayoutStatus({
@@ -44,22 +49,22 @@ const handlePaystackPayoutWebhook = async (event) => {
             providerReference: data.transfer_code
         });
 
-        return {
-            success: true,
-            message: 'Payout marked as paid',
-            payout: updated
-        };
+        return { success: true, payout: updated };
     }
 
     if (payout.status === 'reversed') {
-        return { success: true, message: 'Payout already reversed' };
+        return { success: true, message: 'Already reversed' };
     }
 
-    if (payout.status === 'paid') {
-        throw new Error('Cannot reverse an already paid payout');
+    if (eventType === 'transfer.reversed' && payout.status !== 'paid') {
+        throw new Error('Reversed transfer does not match payout status');
     }
 
-    if (payout.status !== 'failed') {
+    if (eventType === 'transfer.failed' && payout.status === 'paid') {
+        throw new Error('A paid transfer cannot be marked failed');
+    }
+
+    if (payout.status !== 'failed' && payout.status !== 'paid') {
         await updatePayoutStatus({
             payoutId: payout.id,
             status: 'failed',
@@ -87,7 +92,7 @@ const handlePaystackPayoutWebhook = async (event) => {
 
     return {
         success: true,
-        message: 'Failed payout reversed',
+        message: 'Payout funds restored to vendor',
         payout: updated
     };
 };
