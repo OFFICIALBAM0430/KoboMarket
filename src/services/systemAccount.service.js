@@ -4,18 +4,16 @@ const db = require('../config/postgres');
 const SYSTEM_ACCOUNT_CODES = [
     'PLATFORM_ESCROW',
     'PLATFORM_REVENUE',
-    'PLATFORM_PAYOUT_CLEARING'
+    'PLATFORM_PAYOUT_CLEARING',
+    'PLATFORM_PAYOUT_SETTLED'
 ];
 
-const createError = (message, statusCode = 400) => {
-    const error = new Error(message);
-    error.statusCode = statusCode;
-    return error;
-};
-
-const getSystemAccount = async (accountCode, currency = 'NGN') => {
+const getSystemAccount = async (
+    accountCode,
+    currency = 'NGN'
+) => {
     if (!SYSTEM_ACCOUNT_CODES.includes(accountCode)) {
-        throw createError('Invalid system account code');
+        throw new Error('Invalid system account code');
     }
 
     const account = await db('accounts')
@@ -27,16 +25,14 @@ const getSystemAccount = async (accountCode, currency = 'NGN') => {
         .first();
 
     if (!account) {
-        throw createError(
-            `System account ${accountCode} was not found`,
-            404
+        throw new Error(
+            `System account ${accountCode} was not found`
         );
     }
 
     if (account.status !== 'active') {
-        throw createError(
-            `System account ${accountCode} is not active`,
-            409
+        throw new Error(
+            `System account ${accountCode} is not active`
         );
     }
 
@@ -49,26 +45,21 @@ const getSystemAccount = async (accountCode, currency = 'NGN') => {
     };
 };
 
-const getAllSystemAccounts = async (currency = 'NGN') => {
-    const accounts = await db('accounts')
+const getAllSystemAccounts = async () => {
+    return db('accounts')
         .where({
-            owner_type: 'system',
-            currency
+            owner_type: 'system'
         })
-        .whereIn('owner_id', SYSTEM_ACCOUNT_CODES)
-        .orderBy('id', 'asc');
-
-    return accounts.map((account) => ({
-        id: String(account.id),
-        code: account.owner_id,
-        currency: account.currency,
-        balanceKobo: String(account.balance_kobo),
-        status: account.status
-    }));
+        .select(
+            'id',
+            'owner_id',
+            'currency',
+            'balance_kobo',
+            'status'
+        );
 };
 
 module.exports = {
     getSystemAccount,
-    getAllSystemAccounts,
-    SYSTEM_ACCOUNT_CODES
+    getAllSystemAccounts
 };
