@@ -33,6 +33,8 @@ exports.up = async function (knex) {
             .nullable()
             .unique();
 
+        table.string('recipient_code', 100).nullable();
+
         table.string('status', 20)
             .notNullable()
             .defaultTo('pending');
