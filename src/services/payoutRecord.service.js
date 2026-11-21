@@ -15,6 +15,12 @@ const createError = (message, statusCode = 400) => {
     return error;
 };
 
+const findExistingPayout = async (idempotencyKey) => {
+    return db('payout_requests')
+        .where({ idempotency_key: idempotencyKey })
+        .first();
+};
+
 const createPayoutRecord = async ({
     userId,
     transactionId,
@@ -30,17 +36,59 @@ const createPayoutRecord = async ({
         throw createError('Invalid payout amount');
     }
 
-    const [payout] = await db('payout_requests')
-        .insert({
-            user_id: String(userId),
-            transaction_id: String(transactionId),
-            amount_kobo: String(amountKobo),
-            reference,
-            idempotency_key: idempotencyKey
-        })
-        .returning('*');
+    const existing = await findExistingPayout(idempotencyKey);
 
-    return payout;
+    if (existing) {
+        if (
+            existing.user_id !== String(userId) ||
+            String(existing.transaction_id) !== String(transactionId) ||
+            String(existing.amount_kobo) !== String(amountKobo)
+        ) {
+            throw createError(
+                'Idempotency key was reused with different payout details',
+                409
+            );
+        }
+
+        return existing;
+    }
+
+    try {
+        const [payout] = await db('payout_requests')
+            .insert({
+                user_id: String(userId),
+                transaction_id: String(transactionId),
+                amount_kobo: String(amountKobo),
+                reference,
+                idempotency_key: idempotencyKey
+            })
+            .returning('*');
+
+        return payout;
+    } catch (error) {
+        if (error.code !== '23505') {
+            throw error;
+        }
+
+        const duplicate = await findExistingPayout(idempotencyKey);
+
+        if (!duplicate) {
+            throw error;
+        }
+
+        if (
+            duplicate.user_id !== String(userId) ||
+            String(duplicate.transaction_id) !== String(transactionId) ||
+            String(duplicate.amount_kobo) !== String(amountKobo)
+        ) {
+            throw createError(
+                'Idempotency key was reused with different payout details',
+                409
+            );
+        }
+
+        return duplicate;
+    }
 };
 
 const getPayoutByReference = async (reference) => {
