@@ -83,11 +83,38 @@ const registerWebhookEvent = async ({
         }
 
         if (existing.status === 'processing') {
+    const processingAge =
+        Date.now() - new Date(existing.updated_at).getTime();
+
+    const STALE_PROCESSING_TIME = 5 * 60 * 1000;
+
+    if (processingAge > STALE_PROCESSING_TIME) {
+        const [recovered] = await trx('payout_webhook_events')
+            .where({
+                id: existing.id,
+                status: 'processing'
+            })
+            .update({
+                attempts: trx.raw('attempts + 1'),
+                updated_at: trx.fn.now(),
+                last_error: 'Recovered stale processing event'
+            })
+            .returning('*');
+
+        if (recovered) {
             return {
-                isNew: false,
-                currentlyProcessing: true,
-                event: existing
+                isNew: true,
+                recovered: true,
+                event: recovered
             };
+        }
+    }
+
+    return {
+        isNew: false,
+        currentlyProcessing: true,
+        event: existing
+    };
         }
 
         if (existing.status === 'failed') {
