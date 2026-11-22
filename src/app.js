@@ -12,6 +12,7 @@ const cartRoutes = require('./routes/cart.routes');
 const reviewRoutes = require('./routes/review.routes');
 const paystackWebhookRoutes = require('./routes/paystackWebhook.routes');
 const orderRoutes = require('./routes/order.routes');
+const disputeRoutes = require('./routes/dispute.routes');
 
 const app = express();
 
@@ -37,5 +38,6 @@ app.use('/api/v1/admin/vendors', adminVendorRoutes);
 app.use('/api/v1/cart', cartRoutes);
 app.use('/api/v1', reviewRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/disputes', disputeRoutes);
 
 module.exports = app;
