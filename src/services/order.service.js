@@ -727,5 +727,6 @@ module.exports = {
     checkout,
     getBuyerOrders,
     getVendorOrders,
-    updateVendorOrderStatus
+    updateVendorOrderStatus,
+    cancelSubOrder
 };
