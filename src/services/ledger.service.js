@@ -99,7 +99,8 @@ const postLedgerTransaction = async ({
     type,
     reference,
     metadata = {},
-    entries
+    entries,
+    trx: existingTrx = null
 }) => {
     if (
         typeof idempotencyKey !== 'string' ||
@@ -173,7 +174,7 @@ const postLedgerTransaction = async ({
         }))
     );
 
-    return db.transaction(async (trx) => {
+    const execute = async (trx) => {
         const inserted = await trx('transactions')
             .insert({
                 reference: reference.trim(),
@@ -348,7 +349,11 @@ const postLedgerTransaction = async ({
             ...await getTransactionDetails(trx, transactionId),
             alreadyProcessed: false
         };
-    });
+        };
+
+    return existingTrx
+        ? execute(existingTrx)
+        : db.transaction(execute);
 };
 
 const getAccountBalance = async (accountId) => {
