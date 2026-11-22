@@ -744,26 +744,21 @@ const cancelSubOrder = async ({ buyerId, subOrderId }) => {
         };
     });
 
-        if (cancelledOrder.alreadyCancelled) {
-        return {
-            success: true,
-            message: 'Order was already cancelled',
-            order: cancelledOrder.subOrder
-        };
-    }
+        
 
     const stockRestoration = await restoreCancelledOrderStock(
-        items,
-        subOrderId
-    );
+    items,
+    subOrderId
+);
 
-    return {
-        success: true,
-        message: 'Order cancelled and stock restored successfully',
-        stockRestored: true,
-        stockRestoration,
-        order: cancelledOrder.subOrder
-    };
+return {
+    success: true,
+    message: cancelledOrder.alreadyCancelled
+        ? 'Order was already cancelled; stock restoration checked'
+        : 'Order cancelled and stock restored successfully',
+    stockRestored: true,
+    stockRestoration,
+    order: cancelledOrder.subOrder
 };
                 
 module.exports = {
