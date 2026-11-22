@@ -13,6 +13,7 @@ const reviewRoutes = require('./routes/review.routes');
 const paystackWebhookRoutes = require('./routes/paystackWebhook.routes');
 const orderRoutes = require('./routes/order.routes');
 const disputeRoutes = require('./routes/dispute.routes');
+const { swaggerUi, swaggerSpec } = require('./config/swagger');
 
 const app = express();
 
@@ -39,5 +40,6 @@ app.use('/api/v1/cart', cartRoutes);
 app.use('/api/v1', reviewRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/disputes', disputeRoutes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 module.exports = app;
