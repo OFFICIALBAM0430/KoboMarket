@@ -3,7 +3,8 @@ const {
     checkout,
     getBuyerOrders,
     getVendorOrders,
-    updateVendorOrderStatus
+    updateVendorOrderStatus,
+    cancelSubOrder
 } = require('../services/order.service');
 
 const checkoutOrder = async (req, res, next) => {
@@ -66,9 +67,25 @@ const changeVendorOrderStatus = async (req, res, next) => {
     }
 };
 
+const cancelBuyerSubOrder = async (req, res) => {
+    try {
+        const result = await cancelSubOrder({
+            buyerId: req.user.id,
+            subOrderId: req.params.subOrderId
+        });
+
+        return res.status(200).json(result);
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message || 'Unable to cancel order'
+        });
+    }
+};
 module.exports = {
     checkoutOrder,
     listBuyerOrders,
     listVendorOrders,
-    changeVendorOrderStatus
+    changeVendorOrderStatus,
+    cancelBuyerSubOrder
 };
