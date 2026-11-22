@@ -134,13 +134,30 @@ const updateReview = async (userId, reviewId, updateData) => {
         throw createError('Invalid review ID');
     }
 
+    const allowedUpdates = {};
+
+    if (updateData.rating !== undefined) {
+        allowedUpdates.rating = updateData.rating;
+    }
+
+    if (updateData.comment !== undefined) {
+        allowedUpdates.comment = updateData.comment;
+    }
+
+    if (Object.keys(allowedUpdates).length === 0) {
+        throw createError('Provide a valid rating or comment to update');
+    }
+
     const review = await Review.findOneAndUpdate(
         {
             _id: reviewId,
             user: userId
         },
-        { $set: updateData },
-        { new: true, runValidators: true }
+        { $set: allowedUpdates },
+        {
+            new: true,
+            runValidators: true
+        }
     );
 
     if (!review) {
