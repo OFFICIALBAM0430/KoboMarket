@@ -212,6 +212,7 @@ const resolveDispute = async ({
         }
 
         const ledgerResult = await postLedgerTransaction({
+            trx,
             idempotencyKey: `dispute-resolution-${dispute.id}`,
             reference: `DISPUTE-${dispute.id}`,
             type: 'DISPUTE_RESOLUTION',
