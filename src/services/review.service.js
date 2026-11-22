@@ -4,6 +4,20 @@ const mongoose = require('mongoose');
 const Review = require('../models/review.model');
 const Product = require('../models/product.model');
 
+const db = require('../config/postgres');
+
+const hasCompletedPurchase = async (buyerId, productId) => {
+    const purchase = await db('order_items as oi')
+        .join('sub_orders as so', 'so.id', 'oi.sub_order_id')
+        .join('orders as o', 'o.id', 'so.order_id')
+        .where('o.buyer_id', buyerId)
+        .where('oi.product_id', productId)
+        .where('so.status', 'completed')
+        .first('oi.id');
+
+    return Boolean(purchase);
+};
+
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
     error.statusCode = statusCode;
