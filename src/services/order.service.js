@@ -378,6 +378,152 @@ const checkout = async ({
     };
 };
 
+
+const getBuyerOrders = async (buyerId) => {
+    if (!buyerId) {
+        throw createError('Authentication required', 401);
+    }
+
+    const orders = await db('orders')
+        .where({ buyer_id: String(buyerId) })
+        .orderBy('created_at', 'desc');
+
+    return orders;
+};
+
+const getVendorOrders = async (vendorId) => {
+    if (!vendorId) {
+        throw createError('Authentication required', 401);
+    }
+
+    const orders = await db('sub_orders')
+        .where({ vendor_id: String(vendorId) })
+        .orderBy('created_at', 'desc');
+
+    for (const order of orders) {
+        order.items = await db('order_items')
+            .where({ sub_order_id: order.id });
+    }
+
+    return orders;
+};
+
+const updateVendorOrderStatus = async ({
+    vendorId,
+    subOrderId,
+    status
+}) => {
+    if (!vendorId) {
+        throw createError('Authentication required', 401);
+    }
+
+    const allowedTransitions = {
+        paid: 'processing',
+        processing: 'shipped',
+        shipped: 'delivered'
+    };
+
+    if (!['processing', 'shipped', 'delivered'].includes(status)) {
+        throw createError('Invalid order status');
+    }
+
+    return db.transaction(async (trx) => {
+        const subOrder = await trx('sub_orders')
+            .where({
+                id: subOrderId,
+                vendor_id: String(vendorId)
+            })
+            .forUpdate()
+            .first();
+
+        if (!subOrder) {
+            throw createError('Vendor order not found', 404);
+        }
+
+        const expectedStatus = allowedTransitions[subOrder.status];
+
+        if (expectedStatus !== status) {
+            throw createError(
+                `Cannot change order from ${subOrder.status} to ${status}`,
+                409
+            );
+        }
+
+        const now = new Date();
+
+        const updateData = {
+            status,
+            updated_at: now
+        };
+
+        if (status === 'shipped') {
+            updateData.shipped_at = now;
+        }
+
+        if (status === 'delivered') {
+            updateData.delivered_at = now;
+            updateData.escrow_release_at = new Date(
+                now.getTime() + 72 * 60 * 60 * 1000
+            );
+        }
+
+        await trx('sub_orders')
+            .where({ id: subOrderId })
+            .update(updateData);
+
+        // Update the parent order based on all vendor sub-orders.
+        const subOrders = await trx('sub_orders')
+            .where({ order_id: subOrder.order_id });
+
+        const allDelivered = subOrders.every(
+            item =>
+                item.id === subOrder.id
+                    ? status === 'delivered'
+                    : item.status === 'delivered'
+        );
+
+        const anyShipped = subOrders.some(
+            item =>
+                item.id === subOrder.id
+                    ? ['shipped', 'delivered'].includes(status)
+                    : ['shipped', 'delivered'].includes(item.status)
+        );
+
+        const anyProcessing = subOrders.some(
+            item =>
+                item.id === subOrder.id
+                    ? ['processing', 'shipped', 'delivered'].includes(status)
+                    : ['processing', 'shipped', 'delivered'].includes(item.status)
+        );
+
+        let parentStatus = 'paid';
+
+        if (allDelivered) {
+            parentStatus = 'delivered';
+        } else if (anyShipped) {
+            parentStatus = 'shipped';
+        } else if (anyProcessing) {
+            parentStatus = 'processing';
+        }
+
+        await trx('orders')
+            .where({ id: subOrder.order_id })
+            .update({
+                status: parentStatus,
+                updated_at: now
+            });
+
+        const updatedOrder = await trx('sub_orders')
+            .where({ id: subOrderId })
+            .first();
+
+        return updatedOrder;
+    });
+};
+                
 module.exports = {
-    checkout
+    checkout,
+    getBuyerOrders,
+    getVendorOrders,
+    updateVendorOrderStatus
 };
