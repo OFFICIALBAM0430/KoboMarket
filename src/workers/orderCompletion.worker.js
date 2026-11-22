@@ -13,40 +13,46 @@ const worker = new Worker(
     async (job) => {
         const { subOrderId } = job.data;
 
-        const subOrder = await db('sub_orders')
-            .where({ id: subOrderId })
-            .first();
+        return db.transaction(async (trx) => {
+            const subOrder = await trx('sub_orders')
+                .where({ id: subOrderId })
+                .forUpdate()
+                .first();
 
-        if (!subOrder) {
-            throw new Error('Sub-order not found');
-        }
-
-      
-        if (subOrder.status !== 'delivered') {
-            return {
-                skipped: true,
-                reason: `Order status is ${subOrder.status}`
-            };
-        }
-
-        if (new Date(subOrder.escrow_release_at) > new Date()) {
-            throw new Error('Escrow release time has not arrived');
-        }
-
-        const release = await releaseEscrowToVendor({
-            vendorId: subOrder.vendor_id,
-            amountKobo: Number(subOrder.escrow_amount_kobo),
-            platformFeeKobo: Number(subOrder.platform_fee_kobo),
-            idempotencyKey: `order-release-${subOrder.id}`,
-            reference: `ORDER-RELEASE-${subOrder.id}`,
-            orderId: String(subOrder.order_id),
-            metadata: {
-                subOrderId: String(subOrder.id),
-                reason: 'AUTOMATIC_ORDER_COMPLETION'
+            if (!subOrder) {
+                throw new Error('Sub-order not found');
             }
-        });
 
-        await db.transaction(async (trx) => {
+    
+            if (subOrder.status !== 'delivered') {
+                return {
+                    skipped: true,
+                    reason: `Order status is ${subOrder.status}`
+                };
+            }
+
+            if (!subOrder.escrow_release_at) {
+                throw new Error('Escrow release date is missing');
+            }
+
+            if (new Date(subOrder.escrow_release_at) > new Date()) {
+                throw new Error('Escrow release time has not arrived');
+            }
+
+    
+            const release = await releaseEscrowToVendor({
+                vendorId: subOrder.vendor_id,
+                amountKobo: Number(subOrder.escrow_amount_kobo),
+                platformFeeKobo: Number(subOrder.platform_fee_kobo),
+                idempotencyKey: `order-release-${subOrder.id}`,
+                reference: `ORDER-RELEASE-${subOrder.id}`,
+                orderId: String(subOrder.order_id),
+                metadata: {
+                    subOrderId: String(subOrder.id),
+                    reason: 'AUTOMATIC_ORDER_COMPLETION'
+                }
+            });
+
             await trx('sub_orders')
                 .where({
                     id: subOrder.id,
@@ -72,13 +78,13 @@ const worker = new Worker(
                         updated_at: trx.fn.now()
                     });
             }
-        });
 
-        return {
-            success: true,
-            message: 'Order automatically completed',
-            transaction: release.transaction
-        };
+            return {
+                success: true,
+                message: 'Order automatically completed',
+                transaction: release.transaction
+            };
+        });
     },
     { connection: redis }
 );
@@ -99,4 +105,3 @@ worker.on('error', (error) => {
 });
 
 module.exports = worker;
-      
