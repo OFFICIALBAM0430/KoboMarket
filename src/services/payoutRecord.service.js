@@ -183,9 +183,12 @@ const updatePayoutStatus = async ({
     });
 };
 
+
 module.exports = {
     createPayoutRecord,
     getPayoutByReference,
     updatePayoutStatus,
-    saveRecipientCode
+    saveRecipientCode,
+    getPayoutByIdempotencyKey: findExistingPayout
 };
+
