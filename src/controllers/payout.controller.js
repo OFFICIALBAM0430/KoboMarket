@@ -12,7 +12,8 @@ const {
 
 const {
     updatePayoutStatus,
-    saveRecipientCode
+    saveRecipientCode,
+    getPayoutByIdempotencyKey
 } = require('../services/payoutRecord.service');
 
 const { reverseFailedPayout } = require('../services/payoutReversal.service');
@@ -49,6 +50,36 @@ const submitPayout = async (req, res) => {
                 message: 'Valid account number, bank code and idempotency key are required'
             });
         }
+
+        
+        const normalizedIdempotencyKey = idempotencyKey.trim();
+
+        const existingPayout = await getPayoutByIdempotencyKey(
+            normalizedIdempotencyKey
+        );
+
+        if (existingPayout) {
+            if (
+                existingPayout.user_id !== vendorId ||
+                String(existingPayout.amount_kobo) !== String(amountKobo)
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Idempotency key has already been used with different payout details.'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: 'This payout request has already been processed or submitted.',
+                data: {
+                    reference: existingPayout.reference,
+                    amountKobo: Number(existingPayout.amount_kobo),
+                    status: existingPayout.status
+                }
+            });
+        }
+        
 
         const store = await VendorStore.findOne({
             owner: req.user._id,
