@@ -355,6 +355,21 @@ const resolveDispute = async ({
     });
 };
 
+const listOpenDisputes = async () => {
+    const disputes = await db('disputes as d')
+        .leftJoin('sub_orders as so', 'so.id', 'd.sub_order_id')
+        .select(
+            'd.*',
+            'so.order_id',
+            'so.status as sub_order_status'
+        )
+        .where('d.status', 'open')
+        .orderBy('d.created_at', 'asc')
+        .limit(100);
+
+    return disputes;
+};
+
 module.exports = {
     openDispute,
     resolveDispute
