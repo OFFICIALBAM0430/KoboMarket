@@ -1,5 +1,7 @@
 
 const crypto = require('crypto');
+const mongoose = require('mongoose');
+const StockAdjustment = require('../models/stockAdjustment.model');
 
 const db = require('../config/postgres');
 
@@ -534,6 +536,57 @@ const updateVendorOrderStatus = async ({
     return updatedOrder;
 };
 
+const restoreCancelledOrderStock = async (items, subOrderId) => {
+    let restoredCount = 0;
+
+    for (const item of items) {
+        const idempotencyKey =
+            `cancel-suborder:${subOrderId}:item:${item.id}`;
+
+        const session = await mongoose.startSession();
+
+        try {
+            await session.withTransaction(async () => {
+                const existing = await StockAdjustment.findOne({
+                    idempotencyKey
+                }).session(session);
+
+                if (existing) return;
+
+                const result = await Product.updateOne(
+                    { _id: item.product_id },
+                    { $inc: { stock: item.quantity } },
+                    { session }
+                );
+
+                if (result.matchedCount !== 1) {
+                    throw createError(
+                        `Product ${item.product_id} not found`,
+                        404
+                    );
+                }
+
+                await StockAdjustment.create([{
+                    idempotencyKey,
+                    product: item.product_id,
+                    quantity: item.quantity,
+                    reason: 'order_cancellation',
+                    reference: `CANCEL-${subOrderId}-${item.id}`
+                }], { session });
+
+                restoredCount++;
+            });
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    return {
+        restoredCount,
+        totalItems: items.length
+    };
+};
+
 const cancelSubOrder = async ({ buyerId, subOrderId }) => {
     if (!buyerId) {
         throw createError('Authentication required', 401);
@@ -688,37 +741,24 @@ const cancelSubOrder = async ({ buyerId, subOrderId }) => {
         };
     });
 
-    if (cancelledOrder.alreadyCancelled) {
+        if (cancelledOrder.alreadyCancelled) {
         return {
             success: true,
             message: 'Order was already cancelled',
             order: cancelledOrder.subOrder
         };
     }
-    
-    let stockRestored = true;
 
-    for (const item of items) {
-        try {
-            const result = await Product.updateOne(
-                { _id: item.product_id },
-                { $inc: { stock: item.quantity } }
-            );
-
-            if (result.modifiedCount !== 1) {
-                stockRestored = false;
-            }
-        } catch (error) {
-            stockRestored = false;
-        }
-    }
+    const stockRestoration = await restoreCancelledOrderStock(
+        items,
+        subOrderId
+    );
 
     return {
         success: true,
-        message: stockRestored
-            ? 'Order cancelled and refund processed successfully'
-            : 'Order cancelled and refund processed, but stock restoration needs attention',
-        stockRestored,
+        message: 'Order cancelled and stock restored successfully',
+        stockRestored: true,
+        stockRestoration,
         order: cancelledOrder.subOrder
     };
 };
