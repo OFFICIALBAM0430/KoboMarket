@@ -12,10 +12,17 @@ const {
 
 const {
     openOrderDispute,
-    resolveOrderDispute
+    resolveOrderDispute,
+    getOpenDisputes
 } = require('../controllers/dispute.controller');
 
 router.use(protect);
+
+router.get(
+    '/admin/open',
+    authorize('admin'),
+    getOpenDisputes
+);
 
 router.post(
     '/orders/:subOrderId',
