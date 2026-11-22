@@ -38,6 +38,18 @@ const createReview = async (userId, productId, reviewData) => {
         throw createError('Product not found', 404);
     }
 
+    const hasPurchased = await hasCompletedPurchase(
+    userId,
+    productId
+);
+
+if (!hasPurchased) {
+    throw createError(
+        'You can only review products you have purchased and received',
+        403
+    );
+}
+
     const existingReview = await Review.findOne({
         product: productId,
         user: userId
