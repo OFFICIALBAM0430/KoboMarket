@@ -1,7 +1,7 @@
-
 const {
     openDispute,
-    resolveDispute
+    resolveDispute,
+    listOpenDisputes
 } = require('../services/dispute.service');
 
 const createErrorResponse = (res, error) => {
@@ -54,7 +54,22 @@ const resolveOrderDispute = async (req, res) => {
     }
 };
 
+const getOpenDisputes = async (req, res) => {
+    try {
+        const disputes = await listOpenDisputes();
+
+        return res.status(200).json({
+            success: true,
+            count: disputes.length,
+            data: disputes
+        });
+    } catch (error) {
+        return createErrorResponse(res, error);
+    }
+};
+
 module.exports = {
     openOrderDispute,
-    resolveOrderDispute
+    resolveOrderDispute,
+    getOpenDisputes
 };
