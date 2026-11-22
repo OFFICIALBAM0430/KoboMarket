@@ -6,6 +6,7 @@ const db = require('../config/postgres');
 const Cart = require('../models/cart.model');
 const Product = require('../models/product.model');
 const VendorStore = require('../models/vendorStore.model');
+const { orderCompletionQueue } = require('../queues/orderCompletion.queue');
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -408,6 +409,7 @@ const getVendorOrders = async (vendorId) => {
     return orders;
 };
 
+
 const updateVendorOrderStatus = async ({
     vendorId,
     subOrderId,
@@ -427,7 +429,7 @@ const updateVendorOrderStatus = async ({
         throw createError('Invalid order status');
     }
 
-    return db.transaction(async (trx) => {
+    const updatedOrder = await db.transaction(async (trx) => {
         const subOrder = await trx('sub_orders')
             .where({
                 id: subOrderId,
@@ -440,9 +442,7 @@ const updateVendorOrderStatus = async ({
             throw createError('Vendor order not found', 404);
         }
 
-        const expectedStatus = allowedTransitions[subOrder.status];
-
-        if (expectedStatus !== status) {
+        if (allowedTransitions[subOrder.status] !== status) {
             throw createError(
                 `Cannot change order from ${subOrder.status} to ${status}`,
                 409
@@ -471,27 +471,26 @@ const updateVendorOrderStatus = async ({
             .where({ id: subOrderId })
             .update(updateData);
 
-
         const subOrders = await trx('sub_orders')
             .where({ order_id: subOrder.order_id });
 
         const allDelivered = subOrders.every(
             item =>
-                item.id === subOrder.id
+                String(item.id) === String(subOrder.id)
                     ? status === 'delivered'
                     : item.status === 'delivered'
         );
 
         const anyShipped = subOrders.some(
             item =>
-                item.id === subOrder.id
+                String(item.id) === String(subOrder.id)
                     ? ['shipped', 'delivered'].includes(status)
                     : ['shipped', 'delivered'].includes(item.status)
         );
 
         const anyProcessing = subOrders.some(
             item =>
-                item.id === subOrder.id
+                String(item.id) === String(subOrder.id)
                     ? ['processing', 'shipped', 'delivered'].includes(status)
                     : ['processing', 'shipped', 'delivered'].includes(item.status)
         );
@@ -513,13 +512,25 @@ const updateVendorOrderStatus = async ({
                 updated_at: now
             });
 
-        const updatedOrder = await trx('sub_orders')
+        return trx('sub_orders')
             .where({ id: subOrderId })
             .first();
-
-        return updatedOrder;
     });
+
+    if (status === 'delivered') {
+        await orderCompletionQueue.add(
+            'complete-delivered-order',
+            { subOrderId: String(subOrderId) },
+            {
+                jobId: `complete-suborder-${subOrderId}`,
+                delay: 72 * 60 * 60 * 1000
+            }
+        );
+    }
+
+    return updatedOrder;
 };
+        
                 
 module.exports = {
     checkout,
