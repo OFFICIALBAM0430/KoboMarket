@@ -24,7 +24,7 @@ module.exports = {
         },
 
         seed: {
-            directory: path.resolve(__dirname, 'databse/seeds'),
+            directory: path.resolve(__dirname, 'database/seeds'),
         },
     },
 };
