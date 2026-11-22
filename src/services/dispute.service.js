@@ -372,6 +372,6 @@ const listOpenDisputes = async () => {
 
 module.exports = {
     openDispute,
-    resolveDispute
+    resolveDispute,
+    listOpenDisputes
 };
-            
