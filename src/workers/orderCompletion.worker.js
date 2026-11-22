@@ -23,6 +23,20 @@ const worker = new Worker(
                 throw new Error('Sub-order not found');
             }
 
+            const openDispute = await trx('disputes')
+    .where({
+        sub_order_id: subOrder.id,
+        status: 'open'
+    })
+    .first('id');
+
+if (openDispute) {
+    return {
+        skipped: true,
+        reason: 'Escrow release blocked because this order has an open dispute'
+    };
+}
+
     
             if (subOrder.status !== 'delivered') {
                 return {
