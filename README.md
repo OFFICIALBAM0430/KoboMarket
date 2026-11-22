@@ -133,7 +133,7 @@ Validation| Joi
 Payment gateway| Paystack
 API documentation| Swagger
 Containerization| Docker and Docker Compose
-Logging| Pino
+Logging| Morgan
 
 ---
 
@@ -372,7 +372,7 @@ Disputes| "/api/v1/disputes"
 
 Paystack Webhook
 
-/api/v1/webhooks/paystack
+/api/v1/webhooks/paystack/transfers
 
 Protected routes require the appropriate authentication and authorization permissions.
 
