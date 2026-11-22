@@ -42,7 +42,9 @@ const normalizeId = (value) => {
         typeof value === 'number' &&
         !Number.isSafeInteger(value)
     ) {
-        throw createError('Account ID must not exceed safe integer precision');
+        throw createError(
+            'Account ID must not exceed safe integer precision'
+        );
     }
 
     const id = String(value);
@@ -140,7 +142,9 @@ const postLedgerTransaction = async ({
 
     const normalizedEntries = entries.map((entry) => {
         if (!['debit', 'credit'].includes(entry.direction)) {
-            throw createError('Entry direction must be debit or credit');
+            throw createError(
+                'Entry direction must be debit or credit'
+            );
         }
 
         return {
@@ -163,7 +167,9 @@ const postLedgerTransaction = async ({
     }
 
     if (totalDebits === 0n) {
-        throw createError('Transaction amount must be greater than zero');
+        throw createError(
+            'Transaction amount must be greater than zero'
+        );
     }
 
     const requestedFingerprint = createFingerprint(
@@ -189,7 +195,9 @@ const postLedgerTransaction = async ({
 
         if (inserted.length === 0) {
             const existing = await trx('transactions')
-                .where({ idempotency_key: idempotencyKey.trim() })
+                .where({
+                    idempotency_key: idempotencyKey.trim()
+                })
                 .first();
 
             if (!existing) {
@@ -247,7 +255,8 @@ const postLedgerTransaction = async ({
         const balanceChanges = new Map();
 
         for (const entry of normalizedEntries) {
-            const current = balanceChanges.get(entry.accountId) || 0n;
+            const current =
+                balanceChanges.get(entry.accountId) || 0n;
 
             balanceChanges.set(
                 entry.accountId,
@@ -262,7 +271,12 @@ const postLedgerTransaction = async ({
         const accountIds = [...balanceChanges.keys()].sort(
             (a, b) => {
                 const difference = BigInt(a) - BigInt(b);
-                return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+
+                return difference < 0n
+                    ? -1
+                    : difference > 0n
+                        ? 1
+                        : 0;
             }
         );
 
@@ -349,7 +363,7 @@ const postLedgerTransaction = async ({
             ...await getTransactionDetails(trx, transactionId),
             alreadyProcessed: false
         };
-        };
+    };
 
     return existingTrx
         ? execute(existingTrx)
