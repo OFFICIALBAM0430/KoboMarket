@@ -623,10 +623,13 @@ const cancelSubOrder = async ({ buyerId, subOrderId }) => {
         }
 
         if (subOrder.status === 'cancelled') {
-            return {
-                subOrder,
-                alreadyCancelled: true
-            };
+    items = await trx('order_items')
+        .where({ sub_order_id: subOrder.id });
+
+    return {
+        subOrder,
+        alreadyCancelled: true
+    };
         }
 
         if (!['paid', 'processing'].includes(subOrder.status)) {
