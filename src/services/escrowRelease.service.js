@@ -3,22 +3,30 @@ const { getUserAccount } = require('./userAccount.service');
 const { getSystemAccount } = require('./systemAccount.service');
 const { postLedgerTransaction } = require('./ledger.service');
 
+const MAX_BIGINT = 9223372036854775807n;
+
 const toAmount = (value, fieldName) => {
     if (
         typeof value === 'number' &&
         !Number.isSafeInteger(value)
     ) {
-        throw new Error(`${fieldName} must be a safe integer in kobo`);
+        throw new Error(`${fieldName} must be a safe integer`);
     }
 
     if (
         (typeof value !== 'number' && typeof value !== 'string') ||
         !/^\d+$/.test(String(value))
     ) {
-        throw new Error(`${fieldName} must be a valid kobo amount`);
+        throw new Error(`${fieldName} must be a positive integer`);
     }
 
-    return BigInt(value);
+    const amount = BigInt(value);
+
+    if (amount < 0n || amount > MAX_BIGINT) {
+        throw new Error(`${fieldName} is outside the supported range`);
+    }
+
+    return amount;
 };
 
 const releaseEscrowToVendor = async ({
@@ -28,7 +36,8 @@ const releaseEscrowToVendor = async ({
     idempotencyKey,
     reference,
     orderId,
-    metadata = {}
+    metadata = {},
+    trx = null
 }) => {
     if (!vendorId) {
         throw new Error('Vendor ID is required');
@@ -47,8 +56,8 @@ const releaseEscrowToVendor = async ({
 
     const totalAmount = vendorAmount + platformFee;
 
-    if (totalAmount > 9223372036854775807n) {
-        throw new Error('Total amount exceeds the supported range');
+    if (totalAmount > MAX_BIGINT) {
+        throw new Error('Total escrow amount exceeds supported range');
     }
 
     const escrowAccount = await getSystemAccount('PLATFORM_ESCROW');
@@ -80,6 +89,7 @@ const releaseEscrowToVendor = async ({
     }
 
     const transaction = await postLedgerTransaction({
+        trx,
         idempotencyKey,
         reference,
         type: 'ESCROW_RELEASE',
