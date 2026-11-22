@@ -41,6 +41,7 @@ const worker = new Worker(
 
     
             const release = await releaseEscrowToVendor({
+                trx,
                 vendorId: subOrder.vendor_id,
                 amountKobo: Number(subOrder.escrow_amount_kobo),
                 platformFeeKobo: Number(subOrder.platform_fee_kobo),
