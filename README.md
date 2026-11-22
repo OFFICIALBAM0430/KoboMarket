@@ -2,9 +2,11 @@ KoboMarket
 
 Multi-Vendor Marketplace with Wallets and Escrow
 
-KoboMarket is a multi-vendor e-commerce marketplace built with Node.js, Express.js, MongoDB and PostgreSQL. It enables customers to discover products, manage shopping carts, place orders, make wallet-based payments, and track deliveries. Vendors can manage stores, products, orders and payout requests, while administrators oversee vendor approvals, disputes and marketplace operations.
+KoboMarket is a multi-vendor e-commerce marketplace built with Node.js, Express.js, MongoDB and PostgreSQL.
 
-The platform uses a dual-database architecture to separate marketplace data from financial transactions and ensure that monetary records are handled consistently.
+The platform enables customers to discover products, manage shopping carts, place orders, make wallet-based payments and track deliveries. Vendors can manage stores, products, orders and payout requests, while administrators oversee vendor approvals, disputes and marketplace operations.
+
+KoboMarket uses a dual-database architecture that separates marketplace data from financial transactions. PostgreSQL serves as the source of truth for all financial records and monetary balances.
 
 ---
 
@@ -13,8 +15,8 @@ The platform uses a dual-database architecture to separate marketplace data from
 Authentication and User Management
 
 - User registration and email verification.
-- Secure password hashing.
-- Login and JWT-based authentication.
+- Secure password hashing using bcryptjs.
+- JWT-based authentication.
 - Access-token and refresh-token management.
 - Refresh-token rotation and reuse detection.
 - Logout and logout-all functionality.
@@ -34,7 +36,7 @@ Product Management
 
 - Product creation, updating and archiving.
 - Product categories, descriptions and images.
-- Product pricing stored in kobo.
+- Product pricing stored in integer kobo.
 - Inventory and stock management.
 - Product search and filtering.
 - Active-product listing.
@@ -90,6 +92,7 @@ Vendor Payouts
 
 - Minimum payout amount of ₦1,000.
 - Payout requests with idempotency protection.
+- Nigerian bank account verification through Paystack.
 - Paystack transfer recipient creation.
 - Paystack transfer initiation.
 - Payout status tracking.
@@ -171,7 +174,7 @@ MongoDB provides flexible document storage for marketplace information, while Po
 
 All monetary values are represented as integer kobo rather than floating-point currency values.
 
-For example:
+Examples:
 
 - ₦1,000 = 100,000 kobo.
 - ₦5,000 = 500,000 kobo.
@@ -219,18 +222,17 @@ Escrow Release Flow
 Payout Flow
 
 1. A vendor submits a payout request.
-2. The system checks the minimum payout amount.
-3. The vendor's account is debited.
-4. The platform payout-clearing account is credited.
-5. A payout request is recorded.
-6. Paystack processes the transfer.
-7. Webhook events update payout status and trigger settlement or reversal ledger transactions where applicable.
+2. The system validates the minimum payout amount.
+3. The vendor's Nigerian bank account is verified through Paystack.
+4. A transfer recipient is created.
+5. The vendor's account is debited and the platform payout-clearing account is credited.
+6. A payout request is recorded.
+7. Paystack processes the transfer.
+8. Webhook events update payout status and trigger settlement or reversal ledger transactions where applicable.
 
 ---
 
 5. Project Structure
-
-The main project structure is organized as follows:
 
 KoboMarket/
 │
@@ -245,7 +247,8 @@ KoboMarket/
 │   │   ├── email.js
 │   │   ├── mongodb.js
 │   │   ├── postgres.js
-│   │   └── redis.js
+│   │   ├── redis.js
+│   │   └── swagger.js
 │   │
 │   ├── controllers/
 │   ├── jobs/
@@ -260,8 +263,7 @@ KoboMarket/
 │   ├── workers/
 │   ├── tests/
 │   │
-│   ├── app.js
-│   └── server.js
+│   └── app.js
 │
 ├── .env
 ├── .env.example
@@ -273,7 +275,7 @@ KoboMarket/
 ├── README.md
 └── server.js
 
-Individual modules are separated into controllers, services, models, routes, validators and middleware to support maintainability and clear responsibilities.
+The application follows a modular structure, separating controllers, services, models, routes, validators, middleware and background workers.
 
 ---
 
@@ -281,7 +283,7 @@ Individual modules are separated into controllers, services, models, routes, val
 
 Prerequisites
 
-Install the following:
+Install:
 
 - Node.js and npm.
 - Docker Desktop.
@@ -302,7 +304,7 @@ npm install
 
 Step 3: Configure Environment Variables
 
-Create a ".env" file in the project root using ".env.example" as the reference.
+Create a ".env" file in the project root using ".env.example" as a reference.
 
 Configure the required values for:
 
@@ -315,54 +317,52 @@ Configure the required values for:
 - Paystack secret key.
 - Paystack webhook configuration.
 
-Do not commit real credentials or production secrets to GitHub.
+Never commit real credentials or production secrets to GitHub.
 
-Step 4: Start the Database Services
+Step 4: Start Database Services
 
-From the project root, run:
+From the project root:
 
 docker compose up -d
 
-Check the running containers:
+Check running containers:
 
 docker compose ps
 
-The Compose configuration provides the project's database and supporting infrastructure services.
-
 Step 5: Run Database Migrations
 
-Create the PostgreSQL database using the database name configured in your environment.
+Create the PostgreSQL database using the name configured in your environment.
 
 Then run:
 
 npx knex migrate:latest
 
-To view migration status:
+To check migration status:
 
 npx knex migrate:status
 
-The migrations create the financial accounts, ledger structures, payout tables, order tables, dispute tables and other required relational structures.
-
 Step 6: Start the Application
 
-For development:
+Development:
 
 npm run dev
 
-Or use the configured production/start script:
+Start application:
 
 npm start
 
-The application uses the configured port, with port "5000" as the project's development default.
+The application uses the configured port, defaulting to port "5000".
 
 ---
 
 7. API Route Overview
 
-The API uses the "/api/v1" prefix.
+All API routes use the "/api/v1" prefix.
 
 Module| Base route
 Authentication| "/api/v1/auth"
+Wallet| "/api/v1/wallet"
+Payouts| "/api/v1/payouts"
 Vendors| "/api/v1/vendors"
 Admin vendor management| "/api/v1/admin/vendors"
 Products| "/api/v1/products"
@@ -370,9 +370,19 @@ Cart| "/api/v1/cart"
 Orders| "/api/v1/orders"
 Disputes| "/api/v1/disputes"
 
-The application also contains wallet, payout and payment-related functionality.
+Paystack Webhook
+
+/api/v1/webhooks/paystack
 
 Protected routes require the appropriate authentication and authorization permissions.
+
+Swagger API Documentation
+
+Interactive API documentation is available at:
+
+http://localhost:5000/api-docs
+
+Swagger provides endpoint descriptions, request schemas, response information and interactive API testing.
 
 ---
 
@@ -406,14 +416,16 @@ Paystack is used for payment-related operations.
 The integration includes:
 
 - Paystack API communication.
+- Payment initialization and verification.
 - Transfer recipient creation.
+- Bank account resolution.
 - Transfer initiation.
 - Webhook signature verification.
 - Payout success handling.
 - Payout failure handling.
 - Payout reversal handling.
 
-Use Paystack test credentials for development and demonstration. Production deployment requires the appropriate live credentials and webhook configuration.
+Use Paystack test credentials for development and demonstration. Production deployment requires appropriate live credentials and webhook configuration.
 
 ---
 
@@ -432,13 +444,38 @@ Background workers are organized separately from the main application request ha
 
 ---
 
-11. Development and Contribution
+11. Testing
+
+The project includes a Jest and Supertest testing setup.
+
+Run tests using:
+
+npm test
+
+Important areas for testing include:
+
+- Authentication and authorization.
+- Wallet balances and insufficient funds.
+- Payment webhook signature verification and idempotency.
+- Checkout idempotency and concurrency.
+- Stock race conditions and restoration.
+- Order state transitions.
+- Escrow release and dispute handling.
+- Full and partial refunds.
+- Payout settlement and failed payout reversal.
+- Double-entry ledger consistency.
+
+Test execution and passing results should be confirmed before production deployment.
+
+---
+
+12. Development and Contribution
 
 1. Clone the repository.
 2. Install dependencies.
-3. Configure the environment variables.
-4. Start the Docker services.
-5. Run the database migrations.
+3. Configure environment variables.
+4. Start Docker services.
+5. Run database migrations.
 6. Start the application.
 7. Create a feature branch before making changes.
 8. Commit changes with descriptive messages.
@@ -448,13 +485,18 @@ Never commit ".env" files, API secrets, database credentials or other sensitive 
 
 ---
 
-12. Project Objective
+13. Project Objective
 
-KoboMarket demonstrates the implementation of a multi-vendor marketplace with financial transaction management, wallet accounting, escrow protection, vendor payouts, order management and dispute resolution.
+KoboMarket demonstrates the development of a multi-vendor marketplace with financial transaction management, wallet accounting, escrow protection, vendor payouts, order management and dispute resolution.
 
 Its architecture separates marketplace operations from financial records, uses PostgreSQL as the source of truth for monetary balances, and applies transactional safeguards to important payment and order workflows.
 
 Project: KoboMarket — Multi-Vendor Marketplace with Wallets and Escrow
+
 Backend: Node.js, Express.js, MongoDB and PostgreSQL
+
 Payment Gateway: Paystack
+
 Job Processing: Redis and BullMQ
+
+API Documentation: Swagger
