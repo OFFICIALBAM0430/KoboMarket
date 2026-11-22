@@ -184,11 +184,28 @@ const updatePayoutStatus = async ({
 };
 
 
+const claimPayoutForProcessing = async (payoutId) => {
+    const [claimed] = await db('payout_requests')
+        .where({
+            id: payoutId,
+            status: 'pending'
+        })
+        .update({
+            status: 'processing',
+            updated_at: db.fn.now()
+        })
+        .returning('*');
+
+    return claimed || null;
+};
+
+
 module.exports = {
     createPayoutRecord,
     getPayoutByReference,
     updatePayoutStatus,
     saveRecipientCode,
-    getPayoutByIdempotencyKey: findExistingPayout
+    getPayoutByIdempotencyKey: findExistingPayout,
+    claimPayoutForProcessing
 };
 
