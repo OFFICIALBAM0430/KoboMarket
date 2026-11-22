@@ -3,6 +3,22 @@ const axios = require('axios');
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 
+
+const normalizePaystackError = (error, fallbackMessage) => {
+    const normalizedError = new Error(
+        error.response?.data?.message ||
+        error.message ||
+        fallbackMessage
+    );
+
+    if (error.response) {
+        normalizedError.response = error.response;
+        normalizedError.statusCode = error.response.status;
+    }
+
+    return normalizedError;
+};
+
 const paystackRequest = axios.create({
     baseURL: PAYSTACK_BASE_URL,
     timeout: 15000,
@@ -27,11 +43,10 @@ const resolveBankAccount = async ({ accountNumber, bankCode }) => {
 
         return response.data.data;
     } catch (error) {
-        throw new Error(
-            error.response?.data?.message ||
-            error.message ||
-            'Bank account verification failed'
-        );
+        throw normalizePaystackError(
+    error,
+    'Bank account verification failed'
+);
     }
 };
 
@@ -63,11 +78,10 @@ const createTransferRecipient = async ({
 
         return response.data.data;
     } catch (error) {
-        throw new Error(
-            error.response?.data?.message ||
-            error.message ||
-            'Unable to create transfer recipient'
-        );
+        throw normalizePaystackError(
+    error,
+    'Unable to create transfer recipient'
+);
     }
 };
 
@@ -96,11 +110,10 @@ const initiateTransfer = async ({
 
         return response.data.data;
     } catch (error) {
-        throw new Error(
-            error.response?.data?.message ||
-            error.message ||
-            'Unable to initiate Paystack transfer'
-        );
+        throw normalizePaystackError(
+    error,
+    'Unable to initiate Paystack transfer'
+);
     }
 };
 
