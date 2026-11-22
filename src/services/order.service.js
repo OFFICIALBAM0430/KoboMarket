@@ -7,6 +7,9 @@ const Cart = require('../models/cart.model');
 const Product = require('../models/product.model');
 const VendorStore = require('../models/vendorStore.model');
 const { orderCompletionQueue } = require('../queues/orderCompletion.queue');
+const { getUserAccount } = require('./userAccount.service');
+const { getSystemAccount } = require('./systemAccount.service');
+const { postLedgerTransaction } = require('./ledger.service');
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -530,7 +533,195 @@ const updateVendorOrderStatus = async ({
 
     return updatedOrder;
 };
-        
+
+const cancelSubOrder = async ({ buyerId, subOrderId }) => {
+    if (!buyerId) {
+        throw createError('Authentication required', 401);
+    }
+
+    if (!subOrderId) {
+        throw createError('Suborder ID is required');
+    }
+
+    const userId = String(buyerId);
+    let cancelledOrder;
+    let items = [];
+
+    cancelledOrder = await db.transaction(async (trx) => {
+        const subOrder = await trx('sub_orders')
+            .where({ id: subOrderId })
+            .forUpdate()
+            .first();
+
+        if (!subOrder) {
+            throw createError('Order not found', 404);
+        }
+
+        const order = await trx('orders')
+            .where({
+                id: subOrder.order_id,
+                buyer_id: userId
+            })
+            .forUpdate()
+            .first();
+
+        if (!order) {
+            throw createError('Order not found', 404);
+        }
+
+        if (subOrder.status === 'cancelled') {
+            return {
+                subOrder,
+                alreadyCancelled: true
+            };
+        }
+
+        if (!['paid', 'processing'].includes(subOrder.status)) {
+            throw createError(
+                'Order cannot be cancelled after shipping',
+                409
+            );
+        }
+
+        const escrowAmount = BigInt(subOrder.escrow_amount_kobo);
+
+        if (escrowAmount <= 0n) {
+            throw createError('Invalid escrow amount');
+        }
+
+        const buyerAccount = await getUserAccount(userId);
+        const escrowAccount = await getSystemAccount(
+            'PLATFORM_ESCROW'
+        );
+
+        if (!buyerAccount || !escrowAccount) {
+            throw createError(
+                'Wallet or escrow account not found',
+                404
+            );
+        }
+
+        const orderItems = await trx('order_items')
+            .where({ sub_order_id: subOrder.id });
+
+        if (orderItems.length === 0) {
+            throw createError('Order items not found');
+        }
+
+        await postLedgerTransaction({
+            trx,
+            idempotencyKey: `cancel-suborder-${subOrder.id}`,
+            reference: `CANCEL-${order.reference}-${subOrder.id}`,
+            type: 'ORDER_CANCELLATION_REFUND',
+            metadata: {
+                orderId: order.id,
+                subOrderId: subOrder.id,
+                buyerId: userId
+            },
+            entries: [
+                {
+                    accountId: escrowAccount.id,
+                    direction: 'debit',
+                    amountKobo: escrowAmount.toString()
+                },
+                {
+                    accountId: buyerAccount.id,
+                    direction: 'credit',
+                    amountKobo: escrowAmount.toString()
+                }
+            ]
+        });
+
+        await trx('sub_orders')
+            .where({ id: subOrder.id })
+            .update({
+                status: 'cancelled',
+                updated_at: trx.fn.now()
+            });
+
+        const siblingOrders = await trx('sub_orders')
+            .where({ order_id: order.id });
+
+        const statuses = siblingOrders.map(item =>
+            String(item.id) === String(subOrder.id)
+                ? 'cancelled'
+                : item.status
+        );
+
+        let parentStatus = 'paid';
+
+        if (statuses.every(status => status === 'cancelled')) {
+            parentStatus = 'cancelled';
+        } else if (
+            statuses.every(status =>
+                ['completed', 'cancelled', 'refunded'].includes(status)
+            )
+        ) {
+            parentStatus = statuses.includes('refunded')
+                ? 'refunded'
+                : 'completed';
+        } else if (
+            statuses.some(status =>
+                ['shipped', 'delivered'].includes(status)
+            )
+        ) {
+            parentStatus = 'shipped';
+        } else if (statuses.includes('processing')) {
+            parentStatus = 'processing';
+        }
+
+        await trx('orders')
+            .where({ id: order.id })
+            .update({
+                status: parentStatus,
+                updated_at: trx.fn.now()
+            });
+
+        items = orderItems;
+
+        return {
+            subOrder: {
+                ...subOrder,
+                status: 'cancelled'
+            },
+            alreadyCancelled: false
+        };
+    });
+
+    if (cancelledOrder.alreadyCancelled) {
+        return {
+            success: true,
+            message: 'Order was already cancelled',
+            order: cancelledOrder.subOrder
+        };
+    }
+    
+    let stockRestored = true;
+
+    for (const item of items) {
+        try {
+            const result = await Product.updateOne(
+                { _id: item.product_id },
+                { $inc: { stock: item.quantity } }
+            );
+
+            if (result.modifiedCount !== 1) {
+                stockRestored = false;
+            }
+        } catch (error) {
+            stockRestored = false;
+        }
+    }
+
+    return {
+        success: true,
+        message: stockRestored
+            ? 'Order cancelled and refund processed successfully'
+            : 'Order cancelled and refund processed, but stock restoration needs attention',
+        stockRestored,
+        order: cancelledOrder.subOrder
+    };
+};
                 
 module.exports = {
     checkout,
