@@ -5,11 +5,11 @@ services:
     container_name: kobomarket-api
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     env_file:
       - .env
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 5000
       MONGODB_URL: mongodb://mongodb:27017/kobomarket?replicaSet=rs0
       PGHOST: postgres
@@ -19,6 +19,10 @@ services:
       PGPASSWORD: ${PGPASSWORD:-kobomarket_dev_password}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+    command:
+      - sh
+      - -c
+      - ./node_modules/.bin/knex migrate:latest --knexfile knexfile.js --env development && npm start
     depends_on:
       mongodb:
         condition: service_healthy
@@ -31,8 +35,6 @@ services:
     image: mongo:7
     container_name: kobomarket-mongodb
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    ports:
-      - "27017:27017"
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -54,8 +56,6 @@ services:
       POSTGRES_DB: kobomarket
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:-kobomarket_dev_password}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -69,8 +69,6 @@ services:
     container_name: kobomarket-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
