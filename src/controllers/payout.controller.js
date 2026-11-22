@@ -13,7 +13,8 @@ const {
 const {
     updatePayoutStatus,
     saveRecipientCode,
-    getPayoutByIdempotencyKey
+    getPayoutByIdempotencyKey,
+    claimPayoutForProcessing
 } = require('../services/payoutRecord.service');
 
 const { reverseFailedPayout } = require('../services/payoutReversal.service');
@@ -130,10 +131,20 @@ const submitPayout = async (req, res) => {
         payoutRecord = result.payout;
 
       
-        await updatePayoutStatus({
-            payoutId: payoutRecord.id,
-            status: 'processing'
-        });
+                const claimedPayout = await claimPayoutForProcessing(
+            payoutRecord.id
+        );
+
+        if (!claimedPayout) {
+            return res.status(202).json({
+                success: true,
+                message: 'This payout is already being processed.',
+                data: {
+                    reference: payoutRecord.reference,
+                    status: 'processing'
+                }
+            });
+        }
 
         await saveRecipientCode(
             payoutRecord.id,
