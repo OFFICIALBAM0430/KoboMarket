@@ -471,7 +471,7 @@ const updateVendorOrderStatus = async ({
             .where({ id: subOrderId })
             .update(updateData);
 
-        // Update the parent order based on all vendor sub-orders.
+
         const subOrders = await trx('sub_orders')
             .where({ order_id: subOrder.order_id });
 
