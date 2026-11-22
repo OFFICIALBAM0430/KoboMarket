@@ -28,13 +28,12 @@ const checkout = async ({
 
     const userId = String(buyerId);
 
-  
     const existingOrder = await db('orders')
         .where({ idempotency_key: idempotencyKey })
         .first();
 
     if (existingOrder) {
-        if (existingOrder.buyer_id !== userId) {
+        if (String(existingOrder.buyer_id) !== userId) {
             throw createError(
                 'Idempotency key belongs to another buyer',
                 409
@@ -95,7 +94,6 @@ const checkout = async ({
         }
 
         const storeId = String(product.store);
-
         const lineTotal = product.priceKobo * quantity;
 
         if (!Number.isSafeInteger(lineTotal)) {
@@ -135,9 +133,16 @@ const checkout = async ({
 
     const reference = `ORD-${crypto.randomUUID()}`;
 
+    const ledgerIdempotencyKey = `checkout:${crypto
+        .createHash('sha256')
+        .update(idempotencyKey)
+        .digest('hex')}`;
+
+    let order;
+
+
     try {
-        const order = await db.transaction(async (trx) => {
-            
+        order = await db.transaction(async (trx) => {
             const accounts = await trx('accounts')
                 .where(function () {
                     this.where({
@@ -182,20 +187,13 @@ const checkout = async ({
                 );
             }
 
-            if (BigInt(buyerAccount.balance_kobo) < BigInt(totalKobo)) {
-                throw createError(
-                    'Insufficient wallet balance',
-                    400
-                );
-            }
-
             
             const duplicate = await trx('orders')
                 .where({ idempotency_key: idempotencyKey })
                 .first();
 
             if (duplicate) {
-                if (duplicate.buyer_id !== userId) {
+                if (String(duplicate.buyer_id) !== userId) {
                     throw createError(
                         'Idempotency key belongs to another buyer',
                         409
@@ -203,6 +201,16 @@ const checkout = async ({
                 }
 
                 return duplicate;
+            }
+
+            if (
+                BigInt(buyerAccount.balance_kobo) <
+                BigInt(totalKobo)
+            ) {
+                throw createError(
+                    'Insufficient wallet balance',
+                    400
+                );
             }
 
             
@@ -233,7 +241,6 @@ const checkout = async ({
                 }
             }
 
-            
             const [createdOrder] = await trx('orders')
                 .insert({
                     buyer_id: userId,
@@ -252,7 +259,7 @@ const checkout = async ({
                     reference: `CHECKOUT-${reference}`,
                     type: 'ORDER_ESCROW_FUNDING',
                     status: 'pending',
-                    idempotency_key: `checkout:${idempotencyKey}`,
+                    idempotency_key: ledgerIdempotencyKey,
                     metadata: JSON.stringify({
                         orderReference: reference,
                         buyerId: userId,
@@ -298,9 +305,7 @@ const checkout = async ({
 
             await trx('transactions')
                 .where({ id: ledgerTransaction.id })
-                .update({
-                    status: 'posted'
-                });
+                .update({ status: 'posted' });
 
             
             for (const [storeId, items] of groupedItems.entries()) {
@@ -340,19 +345,6 @@ const checkout = async ({
 
             return createdOrder;
         });
-
-        
-        await Cart.updateOne(
-            { _id: cart._id },
-            { $set: { items: [] } }
-        );
-
-        return {
-            success: true,
-            message: 'Checkout completed successfully',
-            order
-        };
-
     } catch (error) {
         
         for (const change of stockChanges.reverse()) {
@@ -364,9 +356,28 @@ const checkout = async ({
 
         throw error;
     }
+
+    let cartCleared = true;
+
+    try {
+        await Cart.updateOne(
+            { _id: cart._id },
+            { $set: { items: [] } }
+        );
+    } catch (error) {
+        cartCleared = false;
+    }
+
+    return {
+        success: true,
+        message: cartCleared
+            ? 'Checkout completed successfully'
+            : 'Checkout completed successfully, but cart cleanup is pending',
+        cartCleared,
+        order
+    };
 };
 
 module.exports = {
     checkout
 };
-  
