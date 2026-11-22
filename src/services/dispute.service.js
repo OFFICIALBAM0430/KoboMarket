@@ -5,10 +5,36 @@ const { getUserAccount } = require('./userAccount.service');
 const { getSystemAccount } = require('./systemAccount.service');
 const { postLedgerTransaction } = require('./ledger.service');
 
+const MAX_BIGINT = 9223372036854775807n;
+
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
     error.statusCode = statusCode;
     return error;
+};
+
+const parseKobo = (value, fieldName) => {
+    if (
+        typeof value === 'number' &&
+        !Number.isSafeInteger(value)
+    ) {
+        throw createError(`${fieldName} must be a safe integer`);
+    }
+
+    if (
+        (typeof value !== 'number' && typeof value !== 'string') ||
+        !/^\d+$/.test(String(value))
+    ) {
+        throw createError(`${fieldName} must be a positive integer`);
+    }
+
+    const amount = BigInt(value);
+
+    if (amount < 0n || amount > MAX_BIGINT) {
+        throw createError(`${fieldName} is outside the supported range`);
+    }
+
+    return amount;
 };
 
 const openDispute = async ({
@@ -35,8 +61,14 @@ const openDispute = async ({
             .where({ id: subOrder.order_id })
             .first();
 
-        if (!order || String(order.buyer_id) !== String(buyerId)) {
-            throw createError('You cannot dispute this order', 403);
+        if (
+            !order ||
+            String(order.buyer_id) !== String(buyerId)
+        ) {
+            throw createError(
+                'You cannot dispute this order',
+                403
+            );
         }
 
         if (
@@ -55,7 +87,10 @@ const openDispute = async ({
             .first();
 
         if (existing) {
-            throw createError('A dispute already exists for this order', 409);
+            throw createError(
+                'A dispute already exists for this order',
+                409
+            );
         }
 
         const [dispute] = await trx('disputes')
@@ -95,7 +130,10 @@ const resolveDispute = async ({
     adminNote = ''
 }) => {
     if (!adminId) {
-        throw createError('Administrator authentication required', 401);
+        throw createError(
+            'Administrator authentication required',
+            401
+        );
     }
 
     const allowedResolutions = [
@@ -119,7 +157,10 @@ const resolveDispute = async ({
         }
 
         if (dispute.status !== 'open') {
-            throw createError('Dispute has already been resolved', 409);
+            throw createError(
+                'Dispute has already been resolved',
+                409
+            );
         }
 
         const subOrder = await trx('sub_orders')
@@ -128,42 +169,68 @@ const resolveDispute = async ({
             .first();
 
         if (!subOrder || subOrder.status !== 'disputed') {
-            throw createError('Order is not in disputed status', 409);
+            throw createError(
+                'Order is not in disputed status',
+                409
+            );
         }
 
-        const escrowAmount = BigInt(subOrder.escrow_amount_kobo);
-        const vendorAmount = BigInt(subOrder.vendor_amount_kobo);
-        const platformFee = BigInt(subOrder.platform_fee_kobo);
+        const escrowAmount = parseKobo(
+            subOrder.escrow_amount_kobo,
+            'Escrow amount'
+        );
 
-        if (escrowAmount <= 0n || vendorAmount + platformFee !== escrowAmount) {
-            throw createError('Invalid escrow accounting for this order', 409);
+        const vendorAmount = parseKobo(
+            subOrder.vendor_amount_kobo,
+            'Vendor amount'
+        );
+
+        const platformFee = parseKobo(
+            subOrder.platform_fee_kobo,
+            'Platform fee'
+        );
+
+        if (
+            escrowAmount <= 0n ||
+            vendorAmount + platformFee !== escrowAmount
+        ) {
+            throw createError(
+                'Invalid escrow accounting for this order',
+                409
+            );
         }
 
         let refundAmount = 0n;
 
         if (resolution === 'full_refund') {
             refundAmount = escrowAmount;
-        } else if (resolution === 'partial_refund') {
+        }
+
+        if (resolution === 'partial_refund') {
+            refundAmount = parseKobo(
+                refundAmountKobo,
+                'Partial refund amount'
+            );
+
             if (
-                !Number.isSafeInteger(refundAmountKobo) ||
-                refundAmountKobo <= 0
+                refundAmount <= 0n ||
+                refundAmount >= escrowAmount
             ) {
-                throw createError('A valid partial refund amount is required');
-            }
-
-            refundAmount = BigInt(refundAmountKobo);
-
-            if (refundAmount >= escrowAmount) {
                 throw createError(
-                    'Partial refund must be less than the escrow amount'
+                    'Partial refund must be greater than zero and less than escrow'
                 );
             }
         }
 
         const remainingAmount = escrowAmount - refundAmount;
 
-        const escrowAccount = await getSystemAccount('PLATFORM_ESCROW');
-        const buyerAccount = await getUserAccount(dispute.buyer_id);
+        const escrowAccount = await getSystemAccount(
+            'PLATFORM_ESCROW'
+        );
+
+        const buyerAccount = await getUserAccount(
+            dispute.buyer_id
+        );
 
         const entries = [
             {
@@ -182,7 +249,9 @@ const resolveDispute = async ({
         }
 
         if (remainingAmount > 0n) {
-            const vendorAccount = await getUserAccount(dispute.vendor_id);
+            const vendorAccount = await getUserAccount(
+                dispute.vendor_id
+            );
 
             const vendorCredit = remainingAmount > vendorAmount
                 ? vendorAmount
@@ -258,12 +327,15 @@ const resolveDispute = async ({
             .whereNot({ id: subOrder.id });
 
         const allSettled = otherSubOrders.every(
-            item => ['completed', 'refunded'].includes(item.status)
+            (item) => ['completed', 'refunded'].includes(item.status)
         );
 
         if (allSettled) {
-            const hasRefund = resolution !== 'rejected' ||
-                otherSubOrders.some(item => item.status === 'refunded');
+            const hasRefund =
+                finalStatus === 'refunded' ||
+                otherSubOrders.some(
+                    (item) => item.status === 'refunded'
+                );
 
             await trx('orders')
                 .where({ id: subOrder.order_id })
@@ -287,4 +359,4 @@ module.exports = {
     openDispute,
     resolveDispute
 };
-              
+            
