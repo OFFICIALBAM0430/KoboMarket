@@ -11,10 +11,16 @@ const {
     checkoutOrder,
     listBuyerOrders,
     listVendorOrders,
-    changeVendorOrderStatus
+    changeVendorOrderStatus,
+    cancelBuyerSubOrder
 } = require('../controllers/order.controller');
 
 router.use(protect);
+
+router.patch(
+    '/my-orders/:subOrderId/cancel',
+    cancelBuyerSubOrder
+);
 
 router.post('/checkout', validate(checkoutSchema), checkoutOrder);
 
